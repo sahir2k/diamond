@@ -10,7 +10,8 @@ from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 
 from csgo.action_processing import CSGOAction
-from game.play_env import PlayEnv, DatasetEnv
+from game.play_env import PlayEnv
+from game.dataset_env import DatasetEnv
 
 
 JS_TO_KEY = {
