@@ -2,11 +2,10 @@
 Credits: some parts are taken and modified from the file `config.py` from https://github.com/TeaPearce/Counter-Strike_Behavioural_Cloning/
 """
 
-from dataclasses import dataclass 
+from dataclasses import dataclass
 from typing import Dict, List, Set, Tuple
 
 import numpy as np
-import pygame
 import torch
 
 from .keymap import CSGO_FORBIDDEN_COMBINATIONS, CSGO_KEYMAP
@@ -14,7 +13,7 @@ from .keymap import CSGO_FORBIDDEN_COMBINATIONS, CSGO_KEYMAP
 
 @dataclass
 class CSGOAction:
-    keys: List[int]
+    keys: List[str]
     mouse_x: float
     mouse_y: float
     l_click: bool
@@ -26,7 +25,7 @@ class CSGOAction:
 
     @property
     def key_names(self) -> List[str]:
-        return [pygame.key.name(key) for key in self.keys] 
+        return self.keys
 
     def process_mouse(self) -> None:
         # Clip and match mouse to closest in list of possibles
@@ -208,12 +207,10 @@ def decode_csgo_action(y_preds: torch.Tensor) -> CSGOAction:
     id = np.argmax(mouse_y_pred)
     mouse_y = MOUSE_Y_POSSIBLES[id]
 
-    keys_pressed = [pygame.key.key_code(x) for x in keys_pressed]
-
     return CSGOAction(keys_pressed, mouse_x, mouse_y, bool(l_click), bool(r_click))
 
 
-def filter_keys_pressed_forbidden(keys_pressed: List[int], keymap: Dict[int, str] = CSGO_KEYMAP, forbidden_combinations: List[Set[str]] = CSGO_FORBIDDEN_COMBINATIONS) -> List[int]:
+def filter_keys_pressed_forbidden(keys_pressed: List[str], keymap: Dict[str, str] = CSGO_KEYMAP, forbidden_combinations: List[Set[str]] = CSGO_FORBIDDEN_COMBINATIONS) -> List[str]:
     keys = set()
     names = set()
     for key in keys_pressed:
