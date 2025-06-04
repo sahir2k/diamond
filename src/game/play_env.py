@@ -3,7 +3,6 @@ import math
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
-import pygame
 import torch
 from torch import Tensor
 
@@ -42,7 +41,7 @@ class PlayEnv:
         print("\nEnvironment actions:\n")
         for key, action_name in self.keymap.items():
             if key is not None:
-                key_name = pygame.key.name(key)
+                key_name = key.lower()
                 key_name = "⎵" if key_name == "space" else key_name
                 print(f"{key_name} : {action_name}")
 

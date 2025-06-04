@@ -28,6 +28,14 @@ The final command will automatically download our trained CSGO diffusion world m
 
 When the download is complete, control actions will be printed in the terminal. Press Enter to start playing.
 
+### Browser-based interface
+
+To play directly from your browser, run:
+```bash
+python src/web_play.py
+```
+This starts a WebSocket server on port `8765` and an HTTP server on `8766` by default. Open the printed URL in your browser and use the keyboard and mouse to control the world model. You can change the base port with `--port`; the HTTP server always runs on `--port + 1`.
+
 The default [fast config](config/world_model_env/fast.yaml) runs best on a machine with a CUDA GPU, but can also be run on CPU at reduced fps. The model also runs faster if compiled (but takes longer at startup).
 ```bash
 python src/play.py --compile

@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>CSGO WM Web UI</title>
+  <style>
+    body { margin: 0; overflow: hidden; }
+    canvas { width: 100vw; height: 100vh; display: block; }
+  </style>
+</head>
+<body>
+  <canvas id="screen"></canvas>
+  <script>
+    const canvas = document.getElementById('screen');
+    const ctx = canvas.getContext('2d');
+    function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+    window.addEventListener('resize', resize); resize();
+
+    const httpPort = parseInt(location.port || '8766');
+    const wsPort = httpPort - 1;
+    const ws = new WebSocket(`ws://${location.hostname}:${wsPort}/`);
+    ws.onmessage = (event) => {
+        const img = new Image();
+        img.src = 'data:image/jpeg;base64,' + event.data;
+        img.onload = () => ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    };
+
+    function send(type, data) { ws.send(JSON.stringify({type, ...data})); }
+
+    document.addEventListener('keydown', (e) => { send('key_down', {code: e.code}); });
+    document.addEventListener('keyup', (e) => { send('key_up', {code: e.code}); });
+    document.addEventListener('mousemove', (e) => { send('mouse_move', {dx: e.movementX, dy: e.movementY}); });
+    document.addEventListener('mousedown', (e) => { send('mouse_down', {button: e.button}); });
+    document.addEventListener('mouseup', (e) => { send('mouse_up', {button: e.button}); });
+  </script>
+</body>
+</html>
