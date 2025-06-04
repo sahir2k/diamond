@@ -6,35 +6,56 @@
   <style>
     body { margin: 0; overflow: hidden; }
     canvas { width: 100vw; height: 100vh; display: block; }
+    #controls { position: absolute; bottom: 20px; left: 20px; pointer-events: none; }
+    .row { display: flex; justify-content: center; }
+    .key { width: 40px; height: 40px; border: 1px solid #fff; color: #fff; background: rgba(0,0,0,0.5); margin: 2px; display: flex; align-items: center; justify-content: center; font-family: sans-serif; }
+    .active { background: yellow; color: #000; }
   </style>
 </head>
 <body>
   <canvas id="screen"></canvas>
+  <div id="controls">
+    <div class="row"><div id="key-w" class="key">W</div></div>
+    <div class="row">
+      <div id="key-a" class="key">A</div>
+      <div id="key-s" class="key">S</div>
+      <div id="key-d" class="key">D</div>
+    </div>
+  </div>
   <script>
     const canvas = document.getElementById('screen');
     const ctx = canvas.getContext('2d');
     function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
     window.addEventListener('resize', resize); resize();
 
-    async function fetchFrame() {
-      const res = await fetch('frame');
-      const blob = await res.blob();
+    const wsPort = parseInt(location.port) - 1;
+    const wsProtocol = location.protocol === 'https:' ? 'wss' : 'ws';
+    const ws = new WebSocket(`${wsProtocol}://${location.hostname}:${wsPort}`);
+    ws.binaryType = 'blob';
+
+    const keyEls = {
+      'KeyW': document.getElementById('key-w'),
+      'KeyA': document.getElementById('key-a'),
+      'KeyS': document.getElementById('key-s'),
+      'KeyD': document.getElementById('key-d')
+    };
+    function highlight(code, on) {
+      const el = keyEls[code];
+      if (el) el.classList.toggle('active', on);
+    }
+
+    ws.onmessage = async (event) => {
+      const blob = event.data;
       const img = await createImageBitmap(blob);
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      requestAnimationFrame(fetchFrame);
-    }
-    fetchFrame();
+    };
 
     function send(type, data) {
-      fetch('event', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({type, ...data})
-      }).catch(() => {});
+      ws.send(JSON.stringify({type, ...data}));
     }
 
-    document.addEventListener('keydown', (e) => { e.preventDefault(); send('key_down', {code: e.code}); });
-    document.addEventListener('keyup', (e) => { e.preventDefault(); send('key_up', {code: e.code}); });
+    document.addEventListener('keydown', (e) => { e.preventDefault(); highlight(e.code, true); send('key_down', {code: e.code}); });
+    document.addEventListener('keyup', (e) => { e.preventDefault(); highlight(e.code, false); send('key_up', {code: e.code}); });
     document.addEventListener('mousemove', (e) => { e.preventDefault(); send('mouse_move', {dx: e.movementX, dy: e.movementY}); });
     document.addEventListener('mousedown', (e) => { e.preventDefault(); send('mouse_down', {button: e.button}); });
     document.addEventListener('mouseup', (e) => { e.preventDefault(); send('mouse_up', {button: e.button}); });
