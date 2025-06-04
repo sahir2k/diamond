@@ -18,13 +18,20 @@
 
     const httpPort = parseInt(location.port || '8766');
     const wsPort = httpPort - 1;
-    const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
-    const ws = new WebSocket(`${protocol}://${location.hostname}:${wsPort}/`);
-    ws.onmessage = (event) => {
+    let ws;
+    function connect(useWss) {
+      const proto = useWss ? 'wss' : 'ws';
+      ws = new WebSocket(`${proto}://${location.hostname}:${wsPort}/`);
+      ws.onmessage = (event) => {
         const img = new Image();
         img.src = 'data:image/jpeg;base64,' + event.data;
         img.onload = () => ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-    };
+      };
+      ws.onerror = () => {
+        if (useWss) connect(false);
+      };
+    }
+    connect(location.protocol === 'https:');
 
     function send(type, data) { ws.send(JSON.stringify({type, ...data})); }
 
