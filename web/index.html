@@ -6,21 +6,87 @@
   <style>
     body { margin: 0; overflow: hidden; }
     canvas { width: 100vw; height: 100vh; display: block; }
+    #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; }
+    .btn { position: absolute; width: 50px; height: 50px; border-radius: 25px; background: rgba(255,255,255,0.5); text-align: center; line-height: 50px; font-size: 20px; user-select: none; pointer-events: auto; touch-action: none; }
+    #dpad { position: absolute; bottom: 20px; left: 20px; width: 150px; height: 150px; }
+    #btn-up { top: 0; left: 50px; }
+    #btn-down { bottom: 0; left: 50px; }
+    #btn-left { top: 50px; left: 0; }
+    #btn-right { top: 50px; right: 0; }
+    #actions { position: absolute; bottom: 20px; right: 20px; width: 220px; height: 170px; }
+    #trackpad { position: absolute; bottom: 0; right: 0; width: 150px; height: 150px; background: rgba(255,255,255,0.2); border-radius: 10px; pointer-events: auto; touch-action: none; }
+    #fire { bottom: 0; right: 160px; background: rgba(255,0,0,0.5); }
+    #alt { bottom: 60px; right: 160px; background: rgba(0,0,255,0.5); }
+    #jump { bottom: 120px; right: 160px; background: rgba(0,255,0,0.5); }
+    #settings { position: absolute; top: 10px; right: 10px; background: rgba(0,0,0,0.5); color: white; padding: 6px; font-size: 14px; border-radius: 4px; pointer-events: auto; }
+    #settings select, #settings input { margin-left: 4px; }
   </style>
 </head>
 <body>
   <canvas id="screen"></canvas>
+  <div id="overlay">
+    <div id="dpad">
+      <div id="btn-up" class="btn">&#9650;</div>
+      <div id="btn-down" class="btn">&#9660;</div>
+      <div id="btn-left" class="btn">&#9664;</div>
+      <div id="btn-right" class="btn">&#9654;</div>
+    </div>
+    <div id="actions">
+      <div id="fire" class="btn">F</div>
+      <div id="alt" class="btn">R</div>
+      <div id="jump" class="btn">J</div>
+      <div id="trackpad"></div>
+    </div>
+    <div id="settings">
+      Aspect:
+      <select id="aspect">
+        <option value="stretch">stretch</option>
+        <option value="fit">fit</option>
+      </select>
+      Zoom:
+      <input type="range" id="zoom" min="1" max="3" value="1" step="0.1">
+    </div>
+  </div>
   <script>
     const canvas = document.getElementById('screen');
     const ctx = canvas.getContext('2d');
+    const zoomSlider = document.getElementById('zoom');
+    const aspectSelect = document.getElementById('aspect');
+    let zoom = parseFloat(zoomSlider.value);
+    let aspect = aspectSelect.value;
+
     function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
     window.addEventListener('resize', resize); resize();
+    zoomSlider.addEventListener('input', () => { zoom = parseFloat(zoomSlider.value); });
+    aspectSelect.addEventListener('change', () => { aspect = aspectSelect.value; });
+
+    function drawFrame(img) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      let w = canvas.width * zoom;
+      let h = canvas.height * zoom;
+      let x = (canvas.width - w) / 2;
+      let y = (canvas.height - h) / 2;
+      if (aspect === 'fit') {
+        const ratio = img.width / img.height;
+        const r = canvas.width / canvas.height;
+        if (r > ratio) {
+          h = canvas.height * zoom;
+          w = h * ratio;
+        } else {
+          w = canvas.width * zoom;
+          h = w / ratio;
+        }
+        x = (canvas.width - w) / 2;
+        y = (canvas.height - h) / 2;
+      }
+      ctx.drawImage(img, x, y, w, h);
+    }
 
     async function fetchFrame() {
       const res = await fetch('frame');
       const blob = await res.blob();
       const img = await createImageBitmap(blob);
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      drawFrame(img);
       requestAnimationFrame(fetchFrame);
     }
     fetchFrame();
@@ -38,6 +104,49 @@
     document.addEventListener('mousemove', (e) => { e.preventDefault(); send('mouse_move', {dx: e.movementX, dy: e.movementY}); });
     document.addEventListener('mousedown', (e) => { e.preventDefault(); send('mouse_down', {button: e.button}); });
     document.addEventListener('mouseup', (e) => { e.preventDefault(); send('mouse_up', {button: e.button}); });
+
+    function setupKeyButton(id, code) {
+      const el = document.getElementById(id);
+      ['touchstart', 'mousedown'].forEach(ev => el.addEventListener(ev, e => { e.preventDefault(); send('key_down', {code}); }));
+      ['touchend', 'touchcancel', 'mouseup', 'mouseleave'].forEach(ev => el.addEventListener(ev, e => { e.preventDefault(); send('key_up', {code}); }));
+    }
+
+    function setupMouseButton(id, button) {
+      const el = document.getElementById(id);
+      ['touchstart', 'mousedown'].forEach(ev => el.addEventListener(ev, e => { e.preventDefault(); send('mouse_down', {button}); }));
+      ['touchend', 'touchcancel', 'mouseup', 'mouseleave'].forEach(ev => el.addEventListener(ev, e => { e.preventDefault(); send('mouse_up', {button}); }));
+    }
+
+    setupKeyButton('btn-up', 'KeyW');
+    setupKeyButton('btn-down', 'KeyS');
+    setupKeyButton('btn-left', 'KeyA');
+    setupKeyButton('btn-right', 'KeyD');
+    setupKeyButton('jump', 'Space');
+    setupMouseButton('fire', 0);
+    setupMouseButton('alt', 2);
+
+    (function() {
+      const pad = document.getElementById('trackpad');
+      let lastX = null, lastY = null;
+      function start(e) {
+        e.preventDefault();
+        const t = e.touches ? e.touches[0] : e;
+        lastX = t.clientX; lastY = t.clientY;
+      }
+      function move(e) {
+        if (lastX === null) return;
+        e.preventDefault();
+        const t = e.touches ? e.touches[0] : e;
+        const dx = t.clientX - lastX;
+        const dy = t.clientY - lastY;
+        lastX = t.clientX; lastY = t.clientY;
+        send('mouse_move', {dx, dy});
+      }
+      function end(e) { lastX = lastY = null; e.preventDefault(); }
+      ['touchstart', 'mousedown'].forEach(ev => pad.addEventListener(ev, start));
+      ['touchmove', 'mousemove'].forEach(ev => pad.addEventListener(ev, move));
+      ['touchend', 'touchcancel', 'mouseup', 'mouseleave'].forEach(ev => pad.addEventListener(ev, end));
+    })();
   </script>
 </body>
 </html>
