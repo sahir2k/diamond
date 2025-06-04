@@ -16,39 +16,21 @@
     function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
     window.addEventListener('resize', resize); resize();
 
-    const httpPort = parseInt(location.port || '8766');
-    const wsPort = httpPort - 1;
-    let ws;
-    let queue = [];
-    function connect(useWss) {
-      const proto = useWss ? 'wss' : 'ws';
-      console.log('Connecting to', proto, 'WebSocket on port', wsPort);
-      ws = new WebSocket(`${proto}://${location.hostname}:${wsPort}/`);
-      ws.onopen = () => {
-        console.log('WebSocket open');
-        queue.forEach((m) => ws.send(m));
-        queue = [];
-      };
-      ws.onclose = () => console.log('WebSocket closed');
-      ws.onmessage = (event) => {
-        const img = new Image();
-        img.src = 'data:image/jpeg;base64,' + event.data;
-        img.onload = () => ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      };
-      ws.onerror = (e) => {
-        console.log('WebSocket error', e);
-        if (useWss) connect(false);
-      };
+    async function fetchFrame() {
+      const res = await fetch('frame');
+      const blob = await res.blob();
+      const img = await createImageBitmap(blob);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      requestAnimationFrame(fetchFrame);
     }
-    connect(location.protocol === 'https:');
+    fetchFrame();
 
     function send(type, data) {
-      const msg = JSON.stringify({type, ...data});
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(msg);
-      } else {
-        queue.push(msg);
-      }
+      fetch('event', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({type, ...data})
+      }).catch(() => {});
     }
 
     document.addEventListener('keydown', (e) => { e.preventDefault(); send('key_down', {code: e.code}); });

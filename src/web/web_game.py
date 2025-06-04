@@ -1,14 +1,11 @@
-import asyncio
 import base64
 import io
 import json
+from pathlib import Path
 from typing import Tuple, Union
 
 from PIL import Image
-from websockets.server import WebSocketServerProtocol, serve
-from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
-from pathlib import Path
-from functools import partial
+from flask import Flask, Response, request, send_from_directory
 
 from csgo.action_processing import CSGOAction
 from game.play_env import PlayEnv
@@ -43,89 +40,78 @@ class WebGame:
         self.host = host
         self.port = port
 
-    def encode_obs(self, obs):
+        self.keys_pressed = set()
+        self.l_click = False
+        self.r_click = False
+        self.mouse_x = 0
+        self.mouse_y = 0
+        self.obs, _ = self.env.reset()
+
+        web_path = Path(__file__).resolve().parent.parent.parent / "web"
+        self.app = Flask(__name__, static_folder=str(web_path), static_url_path="")
+        self._setup_routes()
+
+    def encode_obs(self, obs) -> bytes:
         assert obs.ndim == 4 and obs.size(0) == 1
-        img = Image.fromarray(obs[0].add(1).div(2).mul(255).byte().permute(1,2,0).cpu().numpy())
+        img = Image.fromarray(obs[0].add(1).div(2).mul(255).byte().permute(1, 2, 0).cpu().numpy())
         img = img.resize((self.width, self.height), resample=Image.BICUBIC)
         buf = io.BytesIO()
         img.save(buf, format="JPEG")
-        return base64.b64encode(buf.getvalue()).decode()
+        return buf.getvalue()
 
-    async def handler(self, websocket: WebSocketServerProtocol):
-        print("Client connected")
-        obs, _ = self.env.reset()
-        keys_pressed = set()
-        l_click = False
-        r_click = False
-        mouse_x = 0
-        mouse_y = 0
-        await websocket.send(self.encode_obs(obs))
-        try:
-            while True:
-                try:
-                    msg = await asyncio.wait_for(websocket.recv(), timeout=1 / self.fps)
-                    event = {} if msg is None else json.loads(msg)
-                except asyncio.TimeoutError:
-                    event = None
-                if event:
-                    print("Event", event)
-                    etype = event.get("type")
-                    if etype == "key_down":
-                        key = JS_TO_KEY.get(event.get("code"))
-                        if key:
-                            keys_pressed.add(key)
-                    elif etype == "key_up":
-                        key = JS_TO_KEY.get(event.get("code"))
-                        if key and key in keys_pressed:
-                            keys_pressed.remove(key)
-                    elif etype == "mouse_move":
-                        mouse_x = event.get("dx", 0) * self.mouse_multiplier
-                        mouse_y = event.get("dy", 0) * self.mouse_multiplier
-                    elif etype == "mouse_down":
-                        if event.get("button") == 0:
-                            l_click = True
-                        if event.get("button") == 2:
-                            r_click = True
-                    elif etype == "mouse_up":
-                        if event.get("button") == 0:
-                            l_click = False
-                        if event.get("button") == 2:
-                            r_click = False
-                    elif etype == "reset":
-                        obs, _ = self.env.reset()
-                        keys_pressed.clear()
-                        l_click = r_click = False
-                        mouse_x = mouse_y = 0
-                action = CSGOAction(list(keys_pressed), mouse_x, mouse_y, l_click, r_click)
-                next_obs, _, end, trunc, _ = self.env.step(action)
-                if end or trunc:
-                    next_obs, _ = self.env.reset()
-                    keys_pressed.clear()
-                    l_click = r_click = False
-                    mouse_x = mouse_y = 0
-                obs = next_obs
-                await websocket.send(self.encode_obs(obs))
-        except Exception as e:
-            print('WebSocket loop error:', e)
-        finally:
-            print('Client disconnected')
+    def _setup_routes(self) -> None:
+        app = self.app
+
+        @app.route("/")
+        def index():
+            return send_from_directory(app.static_folder, "index.html")
+
+        @app.route("/frame")
+        def frame():
+            action = CSGOAction(list(self.keys_pressed), self.mouse_x, self.mouse_y, self.l_click, self.r_click)
+            next_obs, _, end, trunc, _ = self.env.step(action)
+            if end or trunc:
+                next_obs, _ = self.env.reset()
+            self.obs = next_obs
+            img = self.encode_obs(self.obs)
+            # reset mouse deltas after applying
+            self.mouse_x = 0
+            self.mouse_y = 0
+            return Response(img, mimetype="image/jpeg")
+
+        @app.route("/event", methods=["POST"])
+        def event():
+            data = request.get_json(force=True)
+            etype = data.get("type")
+            if etype == "key_down":
+                key = JS_TO_KEY.get(data.get("code"))
+                if key:
+                    self.keys_pressed.add(key)
+            elif etype == "key_up":
+                key = JS_TO_KEY.get(data.get("code"))
+                if key and key in self.keys_pressed:
+                    self.keys_pressed.remove(key)
+            elif etype == "mouse_move":
+                self.mouse_x = data.get("dx", 0) * self.mouse_multiplier
+                self.mouse_y = data.get("dy", 0) * self.mouse_multiplier
+            elif etype == "mouse_down":
+                if data.get("button") == 0:
+                    self.l_click = True
+                if data.get("button") == 2:
+                    self.r_click = True
+            elif etype == "mouse_up":
+                if data.get("button") == 0:
+                    self.l_click = False
+                if data.get("button") == 2:
+                    self.r_click = False
+            elif etype == "reset":
+                self.obs, _ = self.env.reset()
+                self.keys_pressed.clear()
+                self.l_click = self.r_click = False
+                self.mouse_x = self.mouse_y = 0
+            return "", 204
 
     def run(self) -> None:
         self.env.print_controls()
-        asyncio.run(self._run())
+        self.app.run(host=self.host, port=self.port + 1, threaded=True)
 
-    async def _run(self) -> None:
-        web_path = Path(__file__).resolve().parent.parent.parent / "web"
-        handler = partial(SimpleHTTPRequestHandler, directory=str(web_path))
-        http_server = ThreadingHTTPServer((self.host, self.port + 1), handler)
-
-        async with serve(self.handler, self.host, self.port, ping_interval=None):
-            print(f"Web UI listening on ws://{self.host}:{self.port}")
-            print(f"Open http://{self.host}:{self.port + 1}/ in your browser")
-            loop = asyncio.get_running_loop()
-            server_task = loop.run_in_executor(None, http_server.serve_forever)
-            try:
-                await asyncio.Future()
-            finally:
-                http_server.shutdown()
-                await server_task
