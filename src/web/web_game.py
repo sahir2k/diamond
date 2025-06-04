@@ -52,6 +52,7 @@ class WebGame:
         return base64.b64encode(buf.getvalue()).decode()
 
     async def handler(self, websocket: WebSocketServerProtocol):
+        print("Client connected")
         obs, _ = self.env.reset()
         keys_pressed = set()
         l_click = False
@@ -67,6 +68,7 @@ class WebGame:
                 except asyncio.TimeoutError:
                     event = None
                 if event:
+                    print("Event", event)
                     etype = event.get("type")
                     if etype == "key_down":
                         key = JS_TO_KEY.get(event.get("code"))
@@ -103,8 +105,10 @@ class WebGame:
                     mouse_x = mouse_y = 0
                 obs = next_obs
                 await websocket.send(self.encode_obs(obs))
-        except Exception:
-            pass
+        except Exception as e:
+            print('WebSocket loop error:', e)
+        finally:
+            print('Client disconnected')
 
     def run(self) -> None:
         self.env.print_controls()

@@ -21,13 +21,17 @@
     let ws;
     function connect(useWss) {
       const proto = useWss ? 'wss' : 'ws';
+      console.log('Connecting to', proto, 'WebSocket on port', wsPort);
       ws = new WebSocket(`${proto}://${location.hostname}:${wsPort}/`);
+      ws.onopen = () => console.log('WebSocket open');
+      ws.onclose = () => console.log('WebSocket closed');
       ws.onmessage = (event) => {
         const img = new Image();
         img.src = 'data:image/jpeg;base64,' + event.data;
         img.onload = () => ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       };
-      ws.onerror = () => {
+      ws.onerror = (e) => {
+        console.log('WebSocket error', e);
         if (useWss) connect(false);
       };
     }
