@@ -8,6 +8,7 @@ from PIL import Image
 from websockets.server import WebSocketServerProtocol, serve
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
+from functools import partial
 
 from csgo.action_processing import CSGOAction
 from game.play_env import PlayEnv
@@ -110,9 +111,9 @@ class WebGame:
         asyncio.run(self._run())
 
     async def _run(self) -> None:
-        http_server = ThreadingHTTPServer((self.host, self.port + 1), SimpleHTTPRequestHandler)
         web_path = Path(__file__).resolve().parent.parent.parent / "web"
-        http_server.RequestHandlerClass.directory = str(web_path)
+        handler = partial(SimpleHTTPRequestHandler, directory=str(web_path))
+        http_server = ThreadingHTTPServer((self.host, self.port + 1), handler)
 
         async with serve(self.handler, self.host, self.port, ping_interval=None):
             print(f"Web UI listening on ws://{self.host}:{self.port}")
