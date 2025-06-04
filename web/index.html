@@ -18,7 +18,8 @@
 
     const httpPort = parseInt(location.port || '8766');
     const wsPort = httpPort - 1;
-    const ws = new WebSocket(`ws://${location.hostname}:${wsPort}/`);
+    const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
+    const ws = new WebSocket(`${protocol}://${location.hostname}:${wsPort}/`);
     ws.onmessage = (event) => {
         const img = new Image();
         img.src = 'data:image/jpeg;base64,' + event.data;
@@ -27,11 +28,11 @@
 
     function send(type, data) { ws.send(JSON.stringify({type, ...data})); }
 
-    document.addEventListener('keydown', (e) => { send('key_down', {code: e.code}); });
-    document.addEventListener('keyup', (e) => { send('key_up', {code: e.code}); });
-    document.addEventListener('mousemove', (e) => { send('mouse_move', {dx: e.movementX, dy: e.movementY}); });
-    document.addEventListener('mousedown', (e) => { send('mouse_down', {button: e.button}); });
-    document.addEventListener('mouseup', (e) => { send('mouse_up', {button: e.button}); });
+    document.addEventListener('keydown', (e) => { e.preventDefault(); send('key_down', {code: e.code}); });
+    document.addEventListener('keyup', (e) => { e.preventDefault(); send('key_up', {code: e.code}); });
+    document.addEventListener('mousemove', (e) => { e.preventDefault(); send('mouse_move', {dx: e.movementX, dy: e.movementY}); });
+    document.addEventListener('mousedown', (e) => { e.preventDefault(); send('mouse_down', {button: e.button}); });
+    document.addEventListener('mouseup', (e) => { e.preventDefault(); send('mouse_up', {button: e.button}); });
   </script>
 </body>
 </html>
