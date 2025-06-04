@@ -19,11 +19,16 @@
     const httpPort = parseInt(location.port || '8766');
     const wsPort = httpPort - 1;
     let ws;
+    let queue = [];
     function connect(useWss) {
       const proto = useWss ? 'wss' : 'ws';
       console.log('Connecting to', proto, 'WebSocket on port', wsPort);
       ws = new WebSocket(`${proto}://${location.hostname}:${wsPort}/`);
-      ws.onopen = () => console.log('WebSocket open');
+      ws.onopen = () => {
+        console.log('WebSocket open');
+        queue.forEach((m) => ws.send(m));
+        queue = [];
+      };
       ws.onclose = () => console.log('WebSocket closed');
       ws.onmessage = (event) => {
         const img = new Image();
@@ -37,7 +42,14 @@
     }
     connect(location.protocol === 'https:');
 
-    function send(type, data) { ws.send(JSON.stringify({type, ...data})); }
+    function send(type, data) {
+      const msg = JSON.stringify({type, ...data});
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(msg);
+      } else {
+        queue.push(msg);
+      }
+    }
 
     document.addEventListener('keydown', (e) => { e.preventDefault(); send('key_down', {code: e.code}); });
     document.addEventListener('keyup', (e) => { e.preventDefault(); send('key_up', {code: e.code}); });
